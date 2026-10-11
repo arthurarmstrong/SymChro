@@ -1,0 +1,6 @@
+
+
+
+build = { requires = ['pybind11']}
+build-dir = "./build"
+cmake.minimum-version = "3.17"
