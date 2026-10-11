@@ -1,3 +1,5 @@
 .cache
 .venv
 build
+clock.code-workspace
+dist

@@ -1,16 +1,19 @@
 import asyncio
 from collections import deque
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from time import perf_counter
 
 from nicegui import app, ui
+
+from pysymchro import symchro
+
+sync = symchro(40.0)
 
 
 @dataclass
 class PID:
     ref: float = 1.0
-
-    ref_err: float = 0.0
 
     integral: float = 0.0
 
@@ -35,7 +38,7 @@ class PID:
 
 pid = PID()
 
-sim_dt = 0.2
+sim_dt = timedelta(seconds=0.2)
 
 
 async def page():
@@ -47,29 +50,20 @@ async def page():
     async def update():
         # We know how many sim seconds elapsed - sim_dt. How long did that really take?
         while True:
+            sync.start_work()
+
+            sync.end_work()
+
             _t = perf_counter()
 
-            config["t_cycle"] = _t - config["last_twall"]
-            config["last_twall"] = _t
+            t_work = _t - config["last_twall"] - config["last_sleep"]
 
-            config["wall_time"] = _t - config["start_time"]
-
-            config["t_last_ten_cycles"].append(config["t_cycle"])
-
-            await tick()
-
-            config["current_ratio"] = 10 * sim_dt / sum(config["t_last_ten_cycles"])
-
-            sleep_should_be = sim_dt / config["ref_rate"] - (
-                config["t_cycle"] - config["t_sleep"]
+            t_sleep = (
+                sync.get_sleep_required_ns(sim_dt, t_work, config["ref_rate"]) / 1e9
             )
+            config["last_sleep"] = t_sleep
 
-            err_sleep_measured = 1 * (config["t_sleep"] - sleep_should_be)
-
-            d_t_sleep = pid.update(err_sleep_measured, config["t_cycle"])
-
-            config["t_sleep"] = max(0, config["t_sleep"] + d_t_sleep)
-            t_sleep = config["t_sleep"]
+            config["last_twall"] = _t
 
             if t_sleep >= 0:
                 await asyncio.sleep(t_sleep)
@@ -84,10 +78,8 @@ async def page():
     config["last_twall"] = perf_counter()
     config["start_time"] = perf_counter()  # when we started
     config["current_ratio"] = 1.0  # current sim time to wall time ratio
-    config["t_sleep"] = 0.0  # how long to sleep for
-    config["t_cycle"] = 0.1  # how long the last cycle took
-
-    _dq = config["t_last_ten_cycles"] = deque(maxlen=10)
+    config["last_sleep"] = 0.0  # how long to sleep for
+    config["t_work"] = 0.1  # how long the last cycle took
 
     with ui.card():
         ui.label("Speed up or slow down. It's your choice!")

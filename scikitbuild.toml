@@ -1,0 +1,9 @@
+
+build-dir = "./tmpbuild"
+
+[build]
+targets = ["libSymChro","SymChro"]
+
+[cmake]
+build-type = ['debug','release']
+
