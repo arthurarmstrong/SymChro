@@ -3,22 +3,19 @@
 #include <ctime>
 #include <deque>
 #include <iostream>
+#include <ratio>
 #include <thread>
 
 namespace Sym {
 
 SymChro::SymChro(int ref, float P, float I, float D)
     : P_(P), I_(I), D_(D), integral_(0), lastErrMeasured_(0), systemClock_(),
-      steadyClock_(), lastTenCycles_(10), lastTenSimSteps_(10), lastSleep_(0) {
+      steadyClock_(), lastTenCycles_(10), lastTenSimSteps_(10), simTime_(0),
+      lastSleep_(0) {
 
       };
 
 void SymChro::reset() { this->integral_ = std::chrono::nanoseconds(0); }
-
-template <typename T = std::chrono::milliseconds>
-void tick(T &simTime, const T &dt) {
-  simTime += dt;
-};
 
 template <typename T> T average(const std::deque<T> &q) {
   T total(0);
@@ -30,54 +27,56 @@ template <typename T> T average(const std::deque<T> &q) {
   return total / q.size();
 }
 
+void SymChro::simTick(const std::chrono::nanoseconds &dtSim) {
+  simTime_ += std::chrono::duration_cast<std::chrono::nanoseconds>(dtSim);
+}
+
 template <typename T>
 T SymChro::get_sleep_required(const T &dtSim, const int &desiredRatio) {
 
   static std::chrono::time_point<std::chrono::system_clock> now;
 
-  static std::chrono::milliseconds simTime(0);
   static std::chrono::milliseconds wallTime(0);
 
-  std::chrono::time_point<std::chrono::system_clock> lastTWall =
-      systemClock_.now();
+  static std::chrono::nanoseconds dtSim_;
+
+  dtSim_ = std::chrono::duration_cast<std::chrono::nanoseconds>(dtSim);
+
+  // std::chrono::time_point<std::chrono::system_clock> lastTWall =
+  //     systemClock_.now();
 
   static std::chrono::time_point<std::chrono::system_clock> startTime =
       systemClock_.now();
 
-  T sleepShouldBe;
+  std::chrono::nanoseconds sleepShouldBe;
   static std::chrono::nanoseconds errMeasured;
-
-  T sleepFor;
 
   now = systemClock_.now();
 
-  lastTenSimSteps_.push_back(dtSim);
+  lastTenSimSteps_.push_back(dtSim_);
 
   // increment the sim clock
-  tick(simTime, std::chrono::duration_cast<std::chrono::milliseconds>(dtSim));
+  simTick(dtSim_);
 
   sleepShouldBe =
-      std::chrono::duration_cast<T>(average(lastTenSimSteps_)) / desiredRatio -
-      std::chrono::duration_cast<T>(average(lastTenCycles_));
+      average(lastTenSimSteps_) / desiredRatio - average(lastTenCycles_);
 
   currentRatio_ =
-      average(lastTenSimSteps_) / (average(lastTenCycles_) + sleepShouldBe);
+      average(lastTenSimSteps_) / (average(lastTenCycles_) + lastSleep_);
 
   lastSleep_ = sleepShouldBe;
 
-  wallTime += std::chrono::duration_cast<std::chrono::milliseconds>(workTime_ +
-                                                                    lastSleep_);
+  std::cout
+      << "Sim Time : "
+      << std::chrono::duration_cast<std::chrono::seconds>(simTime_).count()
+      << ", Wall Time: "
+      << std::chrono::duration_cast<std::chrono::seconds>(systemClock_.now() -
+                                                          startTime)
+             .count()
+      << ", Current Ratio: " << currentRatio_
+      << ", Sleepshouldbe: " << sleepShouldBe.count() << std::endl;
 
-  std::cout << "Sim Time : "
-            << std::chrono::duration_cast<std::chrono::seconds>(simTime).count()
-            << ", Wall Time: "
-            << std::chrono::duration_cast<std::chrono::seconds>(
-                   systemClock_.now() - startTime)
-                   .count()
-            << ", Current Ratio: " << currentRatio_
-            << ", Sleepshouldbe: " << sleepShouldBe.count() << std::endl;
-
-  return sleepFor;
+  return std::chrono::duration_cast<T>(sleepShouldBe);
 }
 
 float SymChro::get(std::string s) {

@@ -1,7 +1,7 @@
 from pysymchro import symchro, nanoseconds
 from datetime import datetime, timedelta
 import asyncio
-from time import perf_counter
+from time import perf_counter, sleep
 
 s = symchro(100)
 
@@ -10,21 +10,23 @@ work = timedelta(microseconds=40)
 last_sleep = timedelta(seconds=0)
 
 
-async def main():
+def main():
     while True:
         s.start_work()
-        await asyncio.sleep(work.total_seconds())
+        sleep(work.total_seconds())
         s.end_work()
 
         global last_sleep
 
-        sleep: timedelta = s.get_sleep_required_ms(
-            timedelta(microseconds=200e3),
-            25,
+        req_sleep: timedelta = s.get_sleep_required_ns(
+            timedelta(seconds=0.2),
+            37,
         )
 
-        last_sleep = sleep
+        sleep(req_sleep.total_seconds())
+
+        last_sleep = req_sleep
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

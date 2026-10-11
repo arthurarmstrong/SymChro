@@ -23,6 +23,7 @@ public:
 
   void startWork();
   void endWork();
+  void simTick(const std::chrono::nanoseconds &);
 
 private:
   std::chrono::nanoseconds integral_;
@@ -41,6 +42,7 @@ private:
 
   std::deque<std::chrono::nanoseconds> lastTenCycles_;
   std::deque<std::chrono::nanoseconds> lastTenSimSteps_;
+  std::chrono::nanoseconds simTime_;
 
   std::chrono::nanoseconds lastSleep_;
 };
