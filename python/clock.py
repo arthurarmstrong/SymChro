@@ -1,74 +1,32 @@
 import asyncio
-from collections import deque
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from dataclasses import dataclass
+from datetime import timedelta
 from time import perf_counter
 
-from nicegui import app, ui
 
+from nicegui import app, ui, background_tasks, run
 from pysymchro import symchro
-
-sync = symchro(40.0)
-
-
-@dataclass
-class PID:
-    ref: float = 1.0
-
-    integral: float = 0.0
-
-    last_err_measured: float = 0.0
-
-    P: float = 0.5
-    I: float = 0.001
-    D: float = 0.1
-
-    def update(self, err_measured: float, dt):
-        self.integral += err_measured
-        derrdt = err_measured - self.last_err_measured
-        self.last_err_measured = err_measured
-
-        accel = -self.P * err_measured - self.I * self.integral - self.D * derrdt
-
-        return accel  # * dt**2 / 2
-
-    def reset(self):
-        self.integral = 0.0
-
-
-pid = PID()
 
 sim_dt = timedelta(seconds=0.2)
 
 
+async def update():
+
+    config = app.storage.client
+
+    while True:
+        sync.check_point()
+
+        t_sleep = sync.get_sleep_required_ns(sim_dt, int(config["ref_rate"]))
+
+        config["current_ratio"] = sync.current_ratio
+        config["wall_time"] = perf_counter() - config["start_time"]
+        config["sim_elapsed"] += sim_dt.total_seconds()
+
+        await asyncio.sleep(t_sleep.total_seconds())
+
+
 async def page():
-
-    async def tick():
-        config["sim_elapsed"] += sim_dt
-        await asyncio.sleep(0.0)
-
-    async def update():
-        # We know how many sim seconds elapsed - sim_dt. How long did that really take?
-        while True:
-            sync.start_work()
-
-            sync.end_work()
-
-            _t = perf_counter()
-
-            t_work = _t - config["last_twall"] - config["last_sleep"]
-
-            t_sleep = (
-                sync.get_sleep_required_ns(sim_dt, t_work, config["ref_rate"]) / 1e9
-            )
-            config["last_sleep"] = t_sleep
-
-            config["last_twall"] = _t
-
-            if t_sleep >= 0:
-                await asyncio.sleep(t_sleep)
-            else:
-                await asyncio.sleep(0)
 
     config = app.storage.client
 
@@ -77,7 +35,7 @@ async def page():
     config["sim_elapsed"] = 0.0
     config["last_twall"] = perf_counter()
     config["start_time"] = perf_counter()  # when we started
-    config["current_ratio"] = 1.0  # current sim time to wall time ratio
+    config["current_ratio"] = 10.0  # current sim time to wall time ratio
     config["last_sleep"] = 0.0  # how long to sleep for
     config["t_work"] = 0.1  # how long the last cycle took
 
@@ -104,7 +62,7 @@ async def page():
             backward=lambda t: f"Current Ratio: {t:.1f}",
         )
 
-        sleeping_for = ui.label().bind_text_from(
+        _sleeping_for = ui.label().bind_text_from(
             config,
             "t_sleep",
             backward=lambda t: f"Sleeping: {config['t_sleep'] * 1000:.0f}ms",
@@ -112,11 +70,14 @@ async def page():
 
         ui.slider(
             min=1.0, max=100.0, step=1, value=config["current_ratio"]
-        ).bind_value_to(config, "ref_rate").on_value_change(pid.reset)
-
-        ui.timer(0.03, update)
-
-        await update()
+        ).bind_value_to(config, "ref_rate")
 
 
+async def start_worker():
+    await run.cpu_bound(update)
+
+
+sync = symchro()
+
+app.on_connect(update)
 ui.run(page)

@@ -12,7 +12,7 @@ int main(int argc, char **argv) {
 
   std::cout << "Setting ratio to: " << ratio << "\n";
 
-  Sym::SymChro sym{ratio, .5, .001, 0.1};
+  Sym::SymChro sym{.5, .001, 0.1};
 
   sym.get_sleep_required(std::chrono::nanoseconds(200), 40.);
 
